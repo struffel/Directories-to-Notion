@@ -2,11 +2,14 @@ class NotionProperty{
     static [PsCustomObject] $Schema = @{}
     static [PsCustomObject] NewProperty(){return @{}}
 }
+class NotionPropertyValue : PSCustomObject {}
+class NotionPropertySchema : PSCustomObject {}
+
 class NotionRichTextProperty : NotionProperty {
-    static [PsCustomObject] $Schema = @{
+    static [NotionPropertySchema] $Schema = @{
         "rich_text" = @{}
     }
-    static [PsCustomObject] NewProperty ([string]$Text){
+    static [NotionPropertyValue] NewProperty ([string]$Text){
         return @{
             "rich_text"= @(
                 @{
@@ -19,22 +22,41 @@ class NotionRichTextProperty : NotionProperty {
     }
 }
 
+class NotionTitleProperty : NotionProperty {
+    static [NotionPropertySchema] $Schema = @{
+        "title" = @{}
+    }
+    static [NotionPropertyValue] NewProperty ([String]$Title){
+        return @{   
+            "title" = @(
+                @{
+                    "text" = @{
+                        "content" = "$Title"
+                    }
+                }
+            )
+        }
+    }
+}
+
 class NotionNumberProperty : NotionProperty {
-    static [PsCustomObject] $Schema = @{
+    static [NotionPropertySchema] $Schema = @{
         "number" = @{}
     }
-    static [PsCustomObject] NewProperty ([System.ValueType]$Number){
+    static [NotionPropertyValue] NewProperty ([System.ValueType]$Number){
         return @{
             "number" = $Number
         }
     }
 }
 
+
+
 class NotionCheckboxProperty : NotionProperty{
-    static [PsCustomObject] $Schema = @{
+    static [NotionPropertySchema] $Schema = @{
         "checkbox" = @{}
     }
-    static [PsCustomObject] NewProperty ([Boolean]$Checked){
+    static [NotionPropertyValue] NewProperty ([Boolean]$Checked){
         return @{
             "checked" = $Checked
         }
@@ -70,19 +92,113 @@ function Update-NotionDbSchemaProperty{
     Invoke-NotionApiRequest -Version "2022-02-22" -Endpoint "https://api.notion.com/v1/databases/$db" -Secret $secret -Method Patch -Body $Body
 }
 
-function New-NotionDbPage{}
+function New-NotionDbPage{
+    param(
+        [String] $secret,
+        [String] $db,
+        [Hashtable]$Properties = @{}
+    )
 
-function Remove-NotionDbPage{}
+    $ConvertedProperties = @{}
 
-function Get-NotionDbPage{}
+    if($Properties){
+        $Properties.Keys | Where-Object{$_ -ne ""} | ForEach-Object{
+            if($_ -eq "Name"){
+                $NotionPropertyName = "Name"
+            }else{
+                $NotionPropertyName = ".$_"
+            }
+            $ConvertedProperties.Add($NotionPropertyName,[NotionPropertyValue]$Properties[$_])
+        }
+    }
 
-function Update-NotionDbPageProperties{}
+    $Body = @{
+        "parent" = @{
+            "database_id" = "$db"
+        }
+        "properties" = $ConvertedProperties
+    }
+
+    Invoke-NotionApiRequest -Secret $secret -Version "2022-02-22" -Endpoint "https://api.notion.com/v1/pages" -Method Post -Body $Body
+}
+
+function Update-NotionDbPage{
+    param(
+        [String] $secret,
+        [String] $page,
+        [Hashtable]$Properties = @{}
+    )
+
+    $ConvertedProperties = @{}
+
+    if($Properties){
+        $Properties.Keys | Where-Object{$_ -ne ""} | ForEach-Object{
+            if($_ -eq "Name"){
+                $NotionPropertyName = "Name"
+            }else{
+                $NotionPropertyName = ".$_"
+            }
+            $ConvertedProperties.Add($NotionPropertyName,[NotionPropertyValue]$Properties[$_])
+        }
+    }
+
+    $Body = @{
+        "parent" = @{
+            "database_id" = "$db"
+        }
+        "properties" = $ConvertedProperties
+    }
+
+    Invoke-NotionApiRequest -Secret $secret -Version "2022-02-22" -Endpoint "https://api.notion.com/v1/pages/$page" -Method Patch -Body $Body
+}
+
+function Get-NotionDbPage{
+    param(
+        [String] $secret,
+        [String] $Id
+    )
+    
+    Invoke-NotionApiRequest -Version "2022-02-22" -Endpoint "https://api.notion.com/v1/pages/$Id" -Secret $secret -Method Get
+    
+}
+
+function Get-NotionDbChildPages{
+    param(
+        [String] $secret,
+        [String] $db
+    )
+    $Body = @{}
+    do{
+        $NotionResponse = Invoke-NotionApiRequest -Secret $secret -Version "2022-02-22" -Method Post -Endpoint "https://api.notion.com/v1/databases/$db/query" -Body $Body
+        $NotionResults += $NotionResponse.results
+        $Body.start_cursor = $NotionResponse.next_cursor
+    }while($NotionResponse.has_more)
+    $NotionResults
+}
 
 
 $db = "b103cdddd45d43dda84e8cff956d137e"
 $secret = Get-Content "$PSScriptRoot/token.secret"
 
-Update-NotionDbSchemaProperty -secret $secret -db $db -PropertyName "mytest" -Schema ([NotionCheckboxProperty]::Schema)
+<#
+$Prop = @{
+    "Name" = [NotionTitleProperty]::NewProperty("Testpage B")
+}
+
+$Response = New-NotionDbPage -secret $secret -db $db -Properties $Prop
+
+$Prop = @{
+    "NETtoTifDevelopment" = [NotionRichTextProperty]::NewProperty("1234")
+}
+
+Update-NotionDbPage -secret $secret -page $Response.id -Title "Testpage C" -Properties $Prop
+#>
+
+#Update-NotionDbSchemaProperty -secret $secret -db $db -PropertyName "mytest" -Schema $null
+
+
+
+
 
 <#
 Get-ChildItem -Filter "*_HDRI" "T:\WIP" | ForEach-Object{
