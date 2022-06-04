@@ -1,1 +1,2 @@
-Test-Path -Path "$($args[0].FullName)/HelloWorld.txt" -PathType Leaf
+$Result =  Test-Path -Path "$($args[0])/HelloWorld.txt" -PathType Leaf
+Write-Output $Result

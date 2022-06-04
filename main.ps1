@@ -5,7 +5,11 @@ class NotionPropertyCollection : System.Collections.Generic.Dictionary[System.St
 class NotionPropertySchema : PSCustomObject {}
 class NotionPropertySchemaCollection :     System.Collections.Generic.Dictionary[System.String,PSCustomObject] {}
 
-
+class ScriptCheck{
+    $ScriptPath
+    $Name
+    $Type
+}
 
 class NotionDataModel{
     # Rich Text
@@ -57,7 +61,7 @@ class NotionDataModel{
     }
     static [NotionProperty] NewCheckboxProperty ([Boolean]$Checked){
         return @{
-            "checked" = $Checked
+            "checkbox" = $Checked
         }
     }
 }
@@ -71,6 +75,7 @@ function Invoke-NotionApiRequest{
         [Microsoft.PowerShell.Commands.WebRequestMethod]$Method
     )
 
+    Write-Host -ForegroundColor Yellow "Sending request to $Endpoint"
     Invoke-RestMethod -Headers @{"Authorization" = $secret; "Notion-Version" = $Version; "Content-Type" = "application/json"} -UseBasicParsing -Method $Method -Uri $Endpoint -Body ($Body | ConvertTo-Json -Depth 100)
 }
 
@@ -157,13 +162,27 @@ $db = "b103cdddd45d43dda84e8cff956d137e"
 $secret = Get-Content "$PSScriptRoot/token.secret"
 $ChecksFolder = "$PSScriptRoot/checks"
 
+# Load scripts
+
+[ScriptCheck[]]$Checks = @()
+
+Get-ChildItem -Path $ChecksFolder -File -Filter '*.ps1' | ForEach-Object{
+    $Checks += [ScriptCheck]@{
+        "ScriptPath"=$_.FullName;
+        "Name"=$_.BaseName.split('-')[1];
+        "Type" = $_.BaseName.split('-')[0]
+    }
+}
+
+Write-Host -ForegroundColor Yellow "Loaded Checks"
+$Checks
+
 # Calculate new Notion DB schema
 
 [NotionPropertySchemaCollection]$NewDbSchema = @{}
 
-Get-ChildItem -Path $ChecksFolder -File -Filter '*.ps1' | ForEach-Object{
-    $NewPropertyName = $_.BaseName.split('-')[1]
-    switch($_.BaseName.split('-')[0]){
+$Checks | ForEach-Object{
+    switch($_.Type){
         "Checkbox"{
             $NewPropertySchema = [NotionDataModel]::CheckboxSchema
         }
@@ -177,7 +196,7 @@ Get-ChildItem -Path $ChecksFolder -File -Filter '*.ps1' | ForEach-Object{
             Write-Error "No Schema for $($_.BaseName)"
         }
     }
-    $NewDbSchema.Add(".$NewPropertyName",$NewPropertySchema)
+    $NewDbSchema[".$($_.Name)"] = $NewPropertySchema
 }
 
 # Get Old Notion DB schema
@@ -202,41 +221,68 @@ $NewDbSchema.Keys | ForEach-Object{
 Update-NotionDbSchema -secret $secret -db $db -Schema $UpdateSchema
 
 
-<#
-$Prop = @{
-    "Name" = [NotionTitleProperty]::NewProperty("Testpage B")
-}
+# Run checks inside folders
 
-$Response = New-NotionDbPage -secret $secret -db $db -Properties $Prop
-
-$Prop = @{
-    "NETtoTifDevelopment" = [NotionRichTextProperty]::NewProperty("1234")
-}
-
-Update-NotionDbPage -secret $secret -page $Response.id -Title "Testpage C" -Properties $Prop
-#>
-
-#Update-NotionDbSchemaProperty -secret $secret -db $db -PropertyName "mytest" -Schema $null
-
-
-
-
-
-<#
-Get-ChildItem -Filter "*_HDRI" "T:\WIP" | ForEach-Object{
+Get-ChildItem -Filter "*" "C:\Users\Lennart\Git\notion-sync\playground" | ForEach-Object{
     $CurrentDirectory = $_
-    Write-Host -ForegroundColor Green $CurrentDirectory
+    $CurrentNotionIdFile="$($CurrentDirectory.FullName)/id.notion"
+    $CurrentNotionId = $null
 
-    try{
-        $Result = (& "$PSScriptRoot\checks\Checkbox-NEFtoTIFDevelopment.ps1" $CurrentDirectory.FullName | Select-Object -Last 1)
-        $Result = [Boolean]$Result
-    }catch{
-        Write-Warning "$CurrentDirectory could not be processed: $_"
-        $Result = $false
+     Write-Host -ForegroundColor Green $CurrentDirectory
+
+    if(Test-Path $CurrentNotionIdFile){
+        Write-Host -ForegroundColor Yellow "Found a Notion ID file."
+        $CurrentNotionId = Get-Content -Path $CurrentNotionIdFile
+        try{
+            $ExistingPage = Get-NotionDbPage -secret $secret -Id $CurrentNotionId
+            Write-Host -ForegroundColor Yellow "Referenced Page exists."
+            if($ExistingPage.archived){
+                $CurrentNotionId = $null
+                Write-Host -ForegroundColor Yellow "Referenced Page is archived"
+            }
+        }catch{
+            Write-Host -ForegroundColor Yellow "Referenced Page not found. Reseting..."
+            $CurrentNotionId = $null
+            Remove-Item $CurrentNotionIdFile
+        }
     }
 
-    
-    $Result
-}
+    [NotionPropertyCollection]$NewProperties = @{}
+    $NewProperties.Add("Name", [NotionDataModel]::NewTitlePropertyValue($_.Name))
+    #
+    if(-Not $CurrentNotionId){
+        $CurrentNotionId = (New-NotionDbPage -secret $secret -db $db -properties $NewProperties ).id
+        $CurrentNotionId | Out-File -FilePath $CurrentNotionIdFile
+    }
 
-#>
+    $Checks | ForEach-Object{
+        $CurrentCheck = $_
+        try{
+            $Result = (& $CurrentCheck.ScriptPath $CurrentDirectory.FullName | Select-Object -Last 1)
+        }catch{
+            Write-Warning "$CurrentDirectory could not be processed: $_"
+            $Result = $false
+        }
+
+        switch($_.Type){
+            "Checkbox"{
+                $NewProperties[".$($CurrentCheck.Name)"]=[NotionDataModel]::NewCheckboxProperty($Result)
+            }
+            "Text"{
+                $NewProperties[".$($CurrentCheck.Name)"]=[NotionDataModel]::NewRichTextProperty($Result)
+            }
+            "Number"{
+                $NewProperties[".$($CurrentCheck.Name)"]=[NotionDataModel]::NewNumberProperty($Result)
+            }
+            default{
+                Write-Error "No Schema for $($_.BaseName)"
+            }
+        }
+        
+    }
+    #
+    Write-Host -ForegroundColor Yellow "New Properties:"
+    $NewProperties | ConvertTo-Json -Depth 100
+    Update-NotionDbPage -secret $secret -page $CurrentNotionId -properties $NewProperties
+
+}

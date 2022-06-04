@@ -1,1 +1,1 @@
-"I am a placeholder text."
+"Lorem Ipsum"
