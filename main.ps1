@@ -3,7 +3,7 @@ class NotionProperty : PSCustomObject {}
 class NotionPropertyCollection : System.Collections.Generic.Dictionary[System.String,PSCustomObject] {}
 
 class NotionPropertySchema : PSCustomObject {}
-class NotionPropertySchemaCollection :     System.Collections.Generic.Dictionary[System.String,PSCustomObject] {}
+class NotionPropertySchemaCollection :  System.Collections.Generic.Dictionary[System.String,PSCustomObject] {}
 
 class ScriptCheck{
     $ScriptPath
@@ -124,6 +124,19 @@ function Update-NotionDbPage{
     Invoke-NotionApiRequest -Secret $secret -Version "2022-02-22" -Endpoint "https://api.notion.com/v1/pages/$page" -Method Patch -Body $Body
 }
 
+function Remove-NotionDbPage{
+    param(
+        [String] $secret,
+        [String] $page
+    )
+
+    $Body = @{
+        "archived"=$true
+    }
+
+    Invoke-NotionApiRequest -Secret $secret -Version "2022-02-22" -Endpoint "https://api.notion.com/v1/pages/$page" -Method Patch -Body $Body
+}
+
 function Get-NotionDbPage{
     param(
         [String] $secret,
@@ -161,11 +174,13 @@ function Get-NotionDbChildPages{
 $db = "b103cdddd45d43dda84e8cff956d137e"
 $secret = Get-Content "$PSScriptRoot/token.secret"
 $ChecksFolder = "$PSScriptRoot/checks"
+$TargetFolder = "C:\Users\Lennart\ambientCG-Import"
 
-# Load scripts
+# Load Folder to process and scripts to run
+
+$LocalDirectories = Get-ChildItem -Directory -Path $TargetFolder
 
 [ScriptCheck[]]$Checks = @()
-
 Get-ChildItem -Path $ChecksFolder -File -Filter '*.ps1' | ForEach-Object{
     $Checks += [ScriptCheck]@{
         "ScriptPath"=$_.FullName;
@@ -174,11 +189,59 @@ Get-ChildItem -Path $ChecksFolder -File -Filter '*.ps1' | ForEach-Object{
     }
 }
 
+Write-Host -ForegroundColor Yellow "Loaded Directories"
+$LocalDirectories
+
 Write-Host -ForegroundColor Yellow "Loaded Checks"
 $Checks
 
-# Calculate new Notion DB schema
+# Update list of notion pages to reflect existing folders
 
+$RemotePages = Get-NotionDbChildPages -secret $secret -db $db
+
+# Create notion pages for new folders
+
+$ValidNotionPageIds = @()
+$LocalDirectories | ForEach-Object{
+    $CurrentDirectory = $_
+    $CurrentNotionIdFile="$($CurrentDirectory.FullName)/id.notion"
+    $CurrentNotionId = $null
+
+     Write-Host -ForegroundColor Green $CurrentDirectory
+
+    if(Test-Path $CurrentNotionIdFile){
+        Write-Host -ForegroundColor Yellow "Found a Notion ID file."
+        $CurrentNotionId = Get-Content -Path $CurrentNotionIdFile
+        try{
+            $ExistingPage = Get-NotionDbPage -secret $secret -Id $CurrentNotionId
+            Write-Host -ForegroundColor Yellow "Referenced Page exists."
+            if($ExistingPage.archived){
+                $CurrentNotionId = $null
+                Write-Host -ForegroundColor Yellow "Referenced Page is archived"
+            }
+        }catch{
+            Write-Host -ForegroundColor Yellow "Referenced Page not found. Reseting..."
+            $CurrentNotionId = $null
+            Remove-Item $CurrentNotionIdFile
+        }
+    }
+
+    [NotionPropertyCollection]$NewProperties = @{}
+    $NewProperties.Add("Name", [NotionDataModel]::NewTitlePropertyValue($_.Name))
+    
+    if(-Not $CurrentNotionId){
+        $CurrentNotionId = (New-NotionDbPage -secret $secret -db $db -properties $NewProperties ).id
+        $CurrentNotionId | Out-File -FilePath $CurrentNotionIdFile
+    }
+    $ValidNotionPageIds+= $CurrentNotionId
+}
+
+$RemotePages | Where-Object {$_.id -notin $ValidNotionPageIds} | ForEach-Object{
+    Remove-NotionDbPage -secret $secret -page $_.id
+}
+
+
+# Calculate new Notion DB schema
 [NotionPropertySchemaCollection]$NewDbSchema = @{}
 
 $Checks | ForEach-Object{
@@ -223,33 +286,12 @@ Update-NotionDbSchema -secret $secret -db $db -Schema $UpdateSchema
 
 # Run checks inside folders
 
-Get-ChildItem -Filter "*" "C:\Users\Lennart\Git\notion-sync\playground" | ForEach-Object{
+$LocalDirectories | ForEach-Object{
     $CurrentDirectory = $_
-    $CurrentNotionIdFile="$($CurrentDirectory.FullName)/id.notion"
-    $CurrentNotionId = $null
-
-     Write-Host -ForegroundColor Green $CurrentDirectory
-
-    if(Test-Path $CurrentNotionIdFile){
-        Write-Host -ForegroundColor Yellow "Found a Notion ID file."
-        $CurrentNotionId = Get-Content -Path $CurrentNotionIdFile
-        try{
-            $ExistingPage = Get-NotionDbPage -secret $secret -Id $CurrentNotionId
-            Write-Host -ForegroundColor Yellow "Referenced Page exists."
-            if($ExistingPage.archived){
-                $CurrentNotionId = $null
-                Write-Host -ForegroundColor Yellow "Referenced Page is archived"
-            }
-        }catch{
-            Write-Host -ForegroundColor Yellow "Referenced Page not found. Reseting..."
-            $CurrentNotionId = $null
-            Remove-Item $CurrentNotionIdFile
-        }
-    }
+    $CurrentNotionId = Get-Content "$($CurrentDirectory.FullName)/id.notion"
 
     [NotionPropertyCollection]$NewProperties = @{}
     $NewProperties.Add("Name", [NotionDataModel]::NewTitlePropertyValue($_.Name))
-    #
     if(-Not $CurrentNotionId){
         $CurrentNotionId = (New-NotionDbPage -secret $secret -db $db -properties $NewProperties ).id
         $CurrentNotionId | Out-File -FilePath $CurrentNotionIdFile
@@ -280,7 +322,6 @@ Get-ChildItem -Filter "*" "C:\Users\Lennart\Git\notion-sync\playground" | ForEac
         }
         
     }
-    #
     Write-Host -ForegroundColor Yellow "New Properties:"
     $NewProperties | ConvertTo-Json -Depth 100
     Update-NotionDbPage -secret $secret -page $CurrentNotionId -properties $NewProperties
