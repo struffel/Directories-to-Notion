@@ -1,15 +1,18 @@
-class NotionProperty{
-    static [PsCustomObject] $Schema = @{}
-    static [PsCustomObject] NewProperty(){return @{}}
-}
-class NotionPropertyValue : PSCustomObject {}
-class NotionPropertySchema : PSCustomObject {}
+﻿
+class NotionProperty : PSCustomObject {}
+class NotionPropertyCollection : System.Collections.Generic.Dictionary[System.String,PSCustomObject] {}
 
-class NotionRichTextProperty : NotionProperty {
-    static [NotionPropertySchema] $Schema = @{
+class NotionPropertySchema : PSCustomObject {}
+class NotionPropertySchemaCollection :     System.Collections.Generic.Dictionary[System.String,PSCustomObject] {}
+
+
+
+class NotionDataModel{
+    # Rich Text
+    static [NotionPropertySchema] $RichTextSchema = @{
         "rich_text" = @{}
     }
-    static [NotionPropertyValue] NewProperty ([string]$Text){
+    static [NotionProperty] NewRichTextProperty ([string]$Text){
         return @{
             "rich_text"= @(
                 @{
@@ -20,13 +23,12 @@ class NotionRichTextProperty : NotionProperty {
             )
         }
     }
-}
 
-class NotionTitleProperty : NotionProperty {
-    static [NotionPropertySchema] $Schema = @{
+    # Title
+    static [NotionPropertySchema] $TitleSchema = @{
         "title" = @{}
     }
-    static [NotionPropertyValue] NewProperty ([String]$Title){
+    static [NotionProperty] NewTitlePropertyValue ([String]$Title){
         return @{   
             "title" = @(
                 @{
@@ -37,26 +39,23 @@ class NotionTitleProperty : NotionProperty {
             )
         }
     }
-}
 
-class NotionNumberProperty : NotionProperty {
-    static [NotionPropertySchema] $Schema = @{
+    # Number
+    static [NotionPropertySchema] $NumberSchema = @{
         "number" = @{}
     }
-    static [NotionPropertyValue] NewProperty ([System.ValueType]$Number){
+    static [NotionProperty] NewNumberProperty ([System.ValueType]$Number){
         return @{
             "number" = $Number
         }
     }
-}
 
+    # Checkbox
 
-
-class NotionCheckboxProperty : NotionProperty{
-    static [NotionPropertySchema] $Schema = @{
+    static [NotionPropertySchema] $CheckboxSchema = @{
         "checkbox" = @{}
     }
-    static [NotionPropertyValue] NewProperty ([Boolean]$Checked){
+    static [NotionProperty] NewCheckboxProperty ([Boolean]$Checked){
         return @{
             "checked" = $Checked
         }
@@ -75,18 +74,15 @@ function Invoke-NotionApiRequest{
     Invoke-RestMethod -Headers @{"Authorization" = $secret; "Notion-Version" = $Version; "Content-Type" = "application/json"} -UseBasicParsing -Method $Method -Uri $Endpoint -Body ($Body | ConvertTo-Json -Depth 100)
 }
 
-function Update-NotionDbSchemaProperty{
+function Update-NotionDbSchema{
     param(
         [String]$secret,
         [String]$db,
-        [String]$PropertyName,
-        [PsCustomObject]$Schema
+        [NotionPropertySchemaCollection]$Schema
     )
 
     $Body = @{
-        "properties" = @{
-            ".$PropertyName" = $Schema
-        }
+        "properties" = $Schema
     }
 
     Invoke-NotionApiRequest -Version "2022-02-22" -Endpoint "https://api.notion.com/v1/databases/$db" -Secret $secret -Method Patch -Body $Body
@@ -96,27 +92,14 @@ function New-NotionDbPage{
     param(
         [String] $secret,
         [String] $db,
-        [Hashtable]$Properties = @{}
+        [NotionPropertyCollection]$Properties = @{}
     )
-
-    $ConvertedProperties = @{}
-
-    if($Properties){
-        $Properties.Keys | Where-Object{$_ -ne ""} | ForEach-Object{
-            if($_ -eq "Name"){
-                $NotionPropertyName = "Name"
-            }else{
-                $NotionPropertyName = ".$_"
-            }
-            $ConvertedProperties.Add($NotionPropertyName,[NotionPropertyValue]$Properties[$_])
-        }
-    }
 
     $Body = @{
         "parent" = @{
             "database_id" = "$db"
         }
-        "properties" = $ConvertedProperties
+        "properties" = $Properties
     }
 
     Invoke-NotionApiRequest -Secret $secret -Version "2022-02-22" -Endpoint "https://api.notion.com/v1/pages" -Method Post -Body $Body
@@ -126,27 +109,11 @@ function Update-NotionDbPage{
     param(
         [String] $secret,
         [String] $page,
-        [Hashtable]$Properties = @{}
+        [NotionPropertyCollection]$Properties = @{}
     )
 
-    $ConvertedProperties = @{}
-
-    if($Properties){
-        $Properties.Keys | Where-Object{$_ -ne ""} | ForEach-Object{
-            if($_ -eq "Name"){
-                $NotionPropertyName = "Name"
-            }else{
-                $NotionPropertyName = ".$_"
-            }
-            $ConvertedProperties.Add($NotionPropertyName,[NotionPropertyValue]$Properties[$_])
-        }
-    }
-
     $Body = @{
-        "parent" = @{
-            "database_id" = "$db"
-        }
-        "properties" = $ConvertedProperties
+        "properties" = $Properties
     }
 
     Invoke-NotionApiRequest -Secret $secret -Version "2022-02-22" -Endpoint "https://api.notion.com/v1/pages/$page" -Method Patch -Body $Body
@@ -160,6 +127,15 @@ function Get-NotionDbPage{
     
     Invoke-NotionApiRequest -Version "2022-02-22" -Endpoint "https://api.notion.com/v1/pages/$Id" -Secret $secret -Method Get
     
+}
+
+function Get-NotionDb{
+    param(
+        [String] $secret,
+        [String] $db
+    )
+
+    Invoke-NotionApiRequest -Version "2022-02-22" -Endpoint "https://api.notion.com/v1/databases/$db" -Secret $secret -Method Get
 }
 
 function Get-NotionDbChildPages{
@@ -179,6 +155,52 @@ function Get-NotionDbChildPages{
 
 $db = "b103cdddd45d43dda84e8cff956d137e"
 $secret = Get-Content "$PSScriptRoot/token.secret"
+$ChecksFolder = "$PSScriptRoot/checks"
+
+# Calculate new Notion DB schema
+
+[NotionPropertySchemaCollection]$NewDbSchema = @{}
+
+Get-ChildItem -Path $ChecksFolder -File -Filter '*.ps1' | ForEach-Object{
+    $NewPropertyName = $_.BaseName.split('-')[1]
+    switch($_.BaseName.split('-')[0]){
+        "Checkbox"{
+            $NewPropertySchema = [NotionDataModel]::CheckboxSchema
+        }
+        "Text"{
+            $NewPropertySchema = [NotionDataModel]::RichTextSchema
+        }
+        "Number"{
+            $NewPropertySchema = [NotionDataModel]::NumberSchema
+        }
+        default{
+            Write-Error "No Schema for $($_.BaseName)"
+        }
+    }
+    $NewDbSchema.Add(".$NewPropertyName",$NewPropertySchema)
+}
+
+# Get Old Notion DB schema
+
+[NotionPropertySchemaCollection]$OldDbSchema = @{}
+
+$NotionDb = Get-NotionDb -secret $secret -db $db
+$NotionDb.properties | Get-Member | ?{$_.Name -like ".*"} | ForEach{
+    $OldDbSchema.Add($_.Name,$null)
+}
+
+# Replace new schema into old schema
+
+[NotionPropertySchemaCollection]$UpdateSchema = $OldDbSchema
+
+$NewDbSchema.Keys | ForEach-Object{
+    $UpdateSchema[$_] = $NewDbSchema[$_]
+}
+
+# Apply the new schema to the Database
+
+Update-NotionDbSchema -secret $secret -db $db -Schema $UpdateSchema
+
 
 <#
 $Prop = @{
