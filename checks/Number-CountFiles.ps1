@@ -1,0 +1,1 @@
+(Get-ChildItem -File -Recurse -Path $args[0] | Measure-Object).Count

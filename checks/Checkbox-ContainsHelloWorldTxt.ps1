@@ -1,0 +1,1 @@
+Test-Path -Path "$($args[0].FullName)/HelloWorld.txt" -PathType Leaf
