@@ -279,7 +279,7 @@ function Register-NotionDirectoryLink {
 
 #region Initialize
 
-$TargetDirectories = Get-ChildItem -Directory -Path $Directory -Filter $Filter
+$TargetDirectories = Get-ChildItem -Directory -Path $Directory -Filter $DirectoryFilter
 
 [ScriptCheck[]]$Checks = @()
 Get-ChildItem -Path $CheckScriptsDirectory -File -Filter '*.ps1' | ForEach-Object{
