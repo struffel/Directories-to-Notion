@@ -11,7 +11,6 @@ param(
     $NotionSecret,
 
     [System.IO.DirectoryInfo]
-    [ValidateScript({$_.Exists})]
     $CheckScriptsDirectory = "$PSScriptRoot/checks",
 
     [Parameter(Mandatory=$true)]
@@ -20,7 +19,7 @@ param(
     $Directory,
 
     [String]
-    $DirectoryFilter = '*',
+    $Filter = '*',
 
     [String]
     $NotionPropertyNamePrefix = ".",
@@ -136,8 +135,21 @@ function Invoke-NotionApiRequest{
     }else{
         Write-Debug -Message "`$Body is null."
     }
+
+    $TryAgain = $false
+    do {
+        try{
+            Invoke-RestMethod -Headers @{"Authorization" = $Secret; "Notion-Version" = $Version; "Content-Type" = "application/json"} -UseBasicParsing -Method $Method -Uri $Endpoint -Body $BodyJson
+        }catch{
+            if($_.Exception.Response.StatusCode.value__ -eq "429"){
+                Write-Warning "Notion is receiving too many requests (429). The script will wait a few seconds."
+                $TryAgain = $true
+            }else{
+                throw "Notion responded with an error: $($_.Exception.Response.StatusCode.value__) ($($_.Exception.Response.StatusDescription))"
+            }
+        }
+    } while($TryAgain)
     
-    Invoke-RestMethod -Headers @{"Authorization" = $Secret; "Notion-Version" = $Version; "Content-Type" = "application/json"} -UseBasicParsing -Method $Method -Uri $Endpoint -Body $BodyJson
 }
 function Update-NotionDbSchema{
     param(
@@ -279,17 +291,22 @@ function Register-NotionDirectoryLink {
 
 #region Initialize
 
-$TargetDirectories = Get-ChildItem -Directory -Path $Directory -Filter $DirectoryFilter
+$TargetDirectories = Get-ChildItem -Directory -Path $Directory -Filter $Filter
 
 [ScriptCheck[]]$Checks = @()
-Get-ChildItem -Path $CheckScriptsDirectory -File -Filter '*.ps1' | ForEach-Object{
-    $Checks += [ScriptCheck]@{
-        "ScriptPath"=$_.FullName;
-        "Name"=$_.BaseName.split('-')[1];
-        "Type" = $_.BaseName.split('-')[0]
+if($CheckScriptsDirectory.Exists){
+    Get-ChildItem -Path $CheckScriptsDirectory -File -Filter '*.ps1' | ForEach-Object{
+        $Checks += [ScriptCheck]@{
+            "ScriptPath"=$_.FullName;
+            "Name"=$_.BaseName.split('-')[1];
+            "Type" = $_.BaseName.split('-')[0]
+        }
     }
+    $LongestCheckNameLength = ($Checks.Name | Measure-Object -Maximum -Property Length).Maximum
+}else{
+    Write-Warning "The script directory '$($CheckScriptsDirectory)' could not be opened. No checks will be performed."
 }
-$LongestCheckNameLength = ($Checks.Name | Measure-Object -Maximum -Property Length).Maximum
+
 
 # Write checks and directories
 Write-Host -ForegroundColor Yellow "Loaded Directories"
