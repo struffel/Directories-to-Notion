@@ -357,6 +357,8 @@ $TargetDirectories | ForEach-Object{
 
     $NewProperties = @{}
 
+    $NewProperties.Name = (New-NotionDbProperty -Type Title -Value $CurrentDirectory.Name )
+
     $Checks | ForEach-Object{
         $CurrentCheck = $_
         Write-Debug -Message ($CurrentCheck | ConvertTo-Json -Depth 100)
