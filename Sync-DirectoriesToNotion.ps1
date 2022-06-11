@@ -7,6 +7,7 @@ param(
     $NotionDatabase,
 
     [String]
+    [ValidateNotNullOrEmpty()]
     [Parameter(Mandatory=$true)]
     $NotionSecret,
 
@@ -26,7 +27,7 @@ param(
 
     [String]
     [ValidateNotNullOrEmpty()]
-    $NotionIdFilePath = "/id.notion"
+    $NotionIdFilePath = "/id.notion.txt"
 )
 
 #endregion
