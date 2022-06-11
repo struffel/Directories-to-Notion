@@ -42,7 +42,7 @@ These "check scripts" must be in one folder and their name determines the type a
 ```
 [Type]-[Name].ps1
 ```
-`[Type]` can be `Text`, `Number` or `Checkbox`.
+`[Type]` can be `Text`, `Number` or `Checkbox`. (Support for more property types may follow in the future).
 `[Name]` represents the name of the property.
 Here are a few examples for possible file names:
 ```
