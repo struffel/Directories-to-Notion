@@ -264,14 +264,15 @@ function Register-NotionDirectoryLink {
             $ExistingPage = Get-NotionDbPage -Secret $NotionSecret -Page $CurrentNotionId
             if($ExistingPage.archived){
                 $CurrentNotionId = $Null
-                Write-Host "A linked notion page already exists, but it is archived."
+                Write-Host "A linked Notion page already exists, but it is archived. A new one will be created..."
             }else{
-                Write-Host "A linked notion page already exists."
+                Write-Host "A linked Notion page already exists."
             }
         }catch{
             $CurrentNotionId = $Null
             Remove-Item $CurrentNotionIdFile
-            Write-Host  "A linked notion page could not be located. ($($_.Exception.Message))"
+            Write-Host  "A linked Notion page could not be located. A new one will be created..."
+            Write-Debug $_.Exception.Message
         }
     }
     
@@ -281,7 +282,7 @@ function Register-NotionDirectoryLink {
         $NotionResponse = New-NotionDbPage -Secret $NotionSecret -Database $NotionDatabase -properties $NewProperties
         Write-Debug -Message $NotionResponse
         $CurrentNotionId = $NotionResponse.id
-        Write-Host "A new linked notion page has been created: $CurrentNotionId"
+        Write-Host "A new linked Notion page has been created: $CurrentNotionId"
         $CurrentNotionId | Out-File -FilePath $CurrentNotionIdFile
     }
 
