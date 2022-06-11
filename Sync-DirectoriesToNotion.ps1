@@ -27,7 +27,7 @@ param(
 
     [String]
     [ValidateNotNullOrEmpty()]
-    $NotionIdFilePath = "/id.notion.txt"
+    $NotionIdFilePath = "/id.notion"
 )
 
 #endregion
