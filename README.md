@@ -1,6 +1,10 @@
-# Directories-to-Notion
+![image](https://user-images.githubusercontent.com/31403260/173184992-7d2b503d-36e9-4d2c-bce5-5b4e3e5a07ae.png)
+
  
 **Directories-to-Notion (DtN)** is a powershell script which turns directories on disk into [Notion](https://notion.so) database pages. One directory represents the database and every subdirectory immediately contained within it becomes one page. Custom properties can be added using simple powershell scripts.
+
+![image](https://user-images.githubusercontent.com/31403260/173185002-32d2fcc6-f045-4f59-aa68-938fe2551a51.png)
+
 
 DtN was written to keep track of all the production files and their various stages for the 3D asset website [ambientCG](https://ambientcg.com). Different stages of the production pipeline can be detected based on which files are (not) present or how big they are.
 ![image](https://user-images.githubusercontent.com/31403260/173184100-895138f7-03d2-457f-8705-408034f3b518.png)
