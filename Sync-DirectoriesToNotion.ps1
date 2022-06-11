@@ -342,7 +342,7 @@ $NewDbSchema.Keys | ForEach-Object{
     $UpdateSchema[$_] = $NewDbSchema[$_]
 }
 
-Update-NotionDbSchema -Secret $NotionSecret -Database $NotionDatabase -Schema $UpdateSchema
+$SchemaUpdateResult = Update-NotionDbSchema -Secret $NotionSecret -Database $NotionDatabase -Schema $UpdateSchema
 
 #endregion
 
