@@ -145,6 +145,7 @@ function Invoke-NotionApiRequest{
             if($_.Exception.Response.StatusCode.value__ -eq "429"){
                 Write-Warning "Notion is receiving too many requests (429). The script will wait a few seconds."
                 $TryAgain = $true
+                Start-Sleep -Seconds 3
             }else{
                 Write-Error "Notion responded with an error: $($_.Exception.Response.StatusCode.value__) ($($_.Exception.Response.StatusDescription))"
             }
