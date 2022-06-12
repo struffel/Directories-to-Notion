@@ -363,7 +363,9 @@ $TargetDirectories | ForEach-Object{
         $CurrentCheck = $_
         Write-Debug -Message ($CurrentCheck | ConvertTo-Json -Depth 100)
         try{
+            $OldLocation = Get-Location
             $Result = (& $CurrentCheck.ScriptPath $CurrentDirectory.FullName | Select-Object -Last 1)
+            Set-Location $OldLocation
         }catch{
             Write-Warning "'$($CurrentCheck.ScriptPath)' for directory '$CurrentDirectory' could not be processed: $_"
             $Result = $False
