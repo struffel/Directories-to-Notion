@@ -146,7 +146,7 @@ function Invoke-NotionApiRequest{
                 Write-Warning "Notion is receiving too many requests (429). The script will wait a few seconds."
                 $TryAgain = $true
             }else{
-                throw "Notion responded with an error: $($_.Exception.Response.StatusCode.value__) ($($_.Exception.Response.StatusDescription))"
+                Write-Error "Notion responded with an error: $($_.Exception.Response.StatusCode.value__) ($($_.Exception.Response.StatusDescription))"
             }
         }
     } while($TryAgain)
