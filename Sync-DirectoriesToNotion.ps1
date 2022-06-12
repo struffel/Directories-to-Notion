@@ -130,7 +130,12 @@ function Invoke-NotionApiRequest{
     )
 
     Write-Debug "Sending $Method request to $Endpoint"
-    $BodyJson = ($Body | ConvertTo-Json -Depth 100)
+    if($Body -ne $null){
+        $BodyJson = ($Body | ConvertTo-Json -Depth 100)
+    }else{
+        $BodyJson = $null
+    }
+
     if($BodyJson -ne $Null){
         Write-Debug -Message $BodyJson
     }else{
