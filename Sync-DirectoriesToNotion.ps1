@@ -15,8 +15,8 @@ param(
     $CheckScriptsDirectory = "$PSScriptRoot/checks",
 
     [Parameter(Mandatory=$true)]
-    [System.IO.DirectoryInfo]
-    [ValidateScript({$_.Exists})]
+    [System.IO.DirectoryInfo[]]
+    [ValidateScript({ $_ | % { $_.Exists } })]
     $Directory,
 
     [String]
@@ -299,7 +299,12 @@ function Register-NotionDirectoryLink {
 
 #region Initialize
 
-$TargetDirectories = Get-ChildItem -Directory -Path $Directory -Filter $Filter
+$TargetDirectories = @()
+$Directory | ForEach-Object{
+    Get-ChildItem -Directory -Path $Directory -Filter $Filter | ForEach-Object{
+        $TargetDirectories += $_
+    }
+}
 
 [ScriptCheck[]]$Checks = @()
 if($CheckScriptsDirectory.Exists){
